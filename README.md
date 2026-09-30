@@ -57,17 +57,15 @@ Puedes cambiar un paso entre A realizar y Pendiente pulsando su etiqueta, editar
 
 ### Vista "Mi día"
 
-Agrupa los tickets abiertos en secciones:
+Cabecera de libreta con una frase-resumen ("Tienes 4 cosas por hacer y 4 esperando respuesta; hoy toca reclamar 1") y pestañas **Todo / A realizar / Pendiente / Cerrados** (más **Contactos**), cada una con su contador. Los tickets que hay que reclamar salen siempre primero.
 
-- **Reclamar hoy**: pasos Pendientes cuya fecha de seguimiento ha llegado (ver más abajo).
-- **A realizar**: lo que te toca a ti.
-- **Pendiente**: lo que esperas de otros, con los días que lleva esperando.
+Cada ticket es una ficha numerada con el nombre de la empresa en el margen (la del contacto mencionado) y un borde de color según su estado: naranja (A realizar), ámbar (Pendiente), rojo (Reclamar) y verde (cerrado). La primera línea hace de título y el primer paso abierto lleva sus botones **Hecho** y **Pasar a Pendiente / A realizar** debajo. A la derecha hay un panel con los próximos 7 días, los seguimientos programados y los contactos.
 
-Cada ticket tiene un borde de color según su estado: naranja (A realizar), ámbar (Pendiente), rojo (Reclamar) y verde (cerrado).
+Con el tema claro u oscuro del sistema, la app cambia automáticamente de paleta (papel o cuaderno nocturno).
 
 ### Contraer y expandir
 
-Los tickets con más de un paso tienen una flecha (▾/▸). Contraído, se ve la primera línea y un resumen con el número de pasos restantes, el **estado actual** del ticket y el texto del paso en curso. Hay también botones **Contraer todo / Expandir todo**. El navegador recuerda lo que dejaste contraído.
+Los tickets con más de un paso tienen una flecha (▼) o se pliegan pulsando la cabecera. Plegado, se ve la primera línea, las etiquetas de estado y el texto del paso en curso ("Ahora → …"); desplegado, aparece la línea de tiempo con todos los pasos. Hay también botones **Contraer todo / Expandir todo**. El navegador recuerda lo que dejaste contraído.
 
 ### Fecha de seguimiento
 
@@ -75,12 +73,19 @@ Cada paso Pendiente puede llevar una fecha de seguimiento (selector de fecha en 
 
 ### Búsqueda
 
-La caja de la cabecera busca en todo el texto de los tickets, **incluidos los cerrados**, y en los contactos:
+**Ctrl+K** (o `/`, o pulsar la caja de la cabecera) abre un buscador. Busca en todo el texto de los tickets, **incluidos los cerrados**, en los nombres de los archivos adjuntos y en los contactos:
 
 - No distingue mayúsculas ni acentos.
 - Un teléfono se encuentra aunque lo escribas con otro formato (`600 111 222`, `600111222`).
-- Los resultados salen de más reciente a más antiguo, según la última actividad.
+- Los tickets salen de más reciente a más antiguo, según la última actividad.
 - Si buscas una empresa o una persona, salen también los tickets enlazados a sus contactos.
+- Flechas y Enter para abrir; "Ver todos los resultados" muestra la lista completa.
+
+### Archivos adjuntos
+
+Cada ticket tiene un botón con un clip en la cabecera para **adjuntar archivos** (PDF, imágenes, Word, Excel, correos guardados, lo que sea) o puedes **arrastrarlos encima del ticket**. Se muestran como fichas (con miniatura si son imágenes); al pulsar una se abre en el navegador (PDF, imágenes y texto) o se descarga. Cada fichero puede pesar hasta 50 MB (`MAX_UPLOAD_MB`).
+
+Los archivos se guardan en `data/files/<ticket>/`; los datos del ticket solo guardan su nombre y tamaño. Si haces copia de la carpeta `data/`, llevas también los adjuntos. El botón **Exportar** del pie descarga solo el JSON de tickets y contactos, sin los ficheros adjuntos.
 
 ### Contactos
 
@@ -93,14 +98,14 @@ La pestaña **Contactos** guarda nombre, empresa, puesto, teléfono y correo, ag
 
 - Se guarda una copia automática al día en `data/backups/backup-AAAA-MM-DD.json` (la primera del día y al arrancar). Se conservan las últimas 30.
 - **Exportar** descarga todos los tickets y contactos en un único JSON.
-- **Importar** restaura desde ese fichero, reemplazando los datos actuales. Antes guarda una copia `pre-import-*.json` por si te arrepientes.
+- **Importar** restaura desde ese fichero, reemplazando los datos actuales (los adjuntos no viajan en el JSON: copia `data/files/` aparte). Antes guarda una copia `pre-import-*.json` por si te arrepientes.
 
 ## Estructura
 
 ```
 server.py          Servidor HTTP (librería estándar) y API JSON
 static/index.html  Toda la interfaz (HTML + CSS + JS)
-data/              Datos: tickets.json, contacts.json, backups/   (no se sube al repo)
+data/              Datos: tickets.json, contacts.json, files/, backups/   (no se sube al repo)
 iniciar.bat        Arranque en Windows
 ```
 
@@ -111,6 +116,9 @@ iniciar.bat        Arranque en Windows
 | GET | `/api/tickets`, `/api/contacts` | Lista completa |
 | PUT | `/api/tickets/<id>`, `/api/contacts/<id>` | Crea o reemplaza un elemento |
 | DELETE | `/api/tickets/<id>`, `/api/contacts/<id>` | Borra un elemento |
+| POST | `/api/tickets/<id>/files?name=<nombre>` | Adjunta un archivo (cuerpo = bytes del fichero) |
+| GET | `/api/files/<ticket>/<archivo>` | Abre o descarga un adjunto |
+| DELETE | `/api/tickets/<id>/files/<archivo>` | Quita un adjunto |
 | GET | `/api/export` | Descarga todo en un JSON |
 | POST | `/api/import` | Restaura desde un JSON exportado |
 
@@ -120,7 +128,8 @@ iniciar.bat        Arranque en Windows
 // ticket
 { "id": "...", "created": "ISO", "updated": "ISO", "closed": null,
   "lines": [ { "text": "...", "status": "A realizar|Pendiente|Realizada",
-               "created": "ISO", "done": null, "remind": "AAAA-MM-DD", "contacts": ["id"] } ] }
+               "created": "ISO", "done": null, "remind": "AAAA-MM-DD", "contacts": ["id"] } ],
+  "files": [ { "id": "...", "name": "presupuesto.pdf", "size": 12345, "type": "application/pdf", "added": "ISO" } ] }
 // contacto
 { "id": "...", "name": "", "company": "", "role": "", "phone": "", "email": "" }
 ```
@@ -128,4 +137,5 @@ iniciar.bat        Arranque en Windows
 ## Hoja de ruta
 
 - Dockerfile / docker-compose.
-- Deshacer, atajos de teclado, pestaña de tickets cerrados y resumen con contadores.
+- Deshacer y más atajos de teclado.
+- Incluir los adjuntos en la exportación (ZIP).

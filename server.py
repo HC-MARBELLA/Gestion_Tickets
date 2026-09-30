@@ -5,10 +5,14 @@ Datos en data/tickets.json y data/contacts.json. Variables de entorno: PORT (879
 DATA_DIR (./data) para cuando se pase a Docker.
 """
 import json
+import mimetypes
 import os
 import re
+import shutil
 import threading
 import time
+import uuid
+from urllib.parse import parse_qs, quote, unquote, urlparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -18,6 +22,10 @@ COLLECTIONS = ("tickets", "contacts")
 LOCK = threading.Lock()
 BACKUP_DIR = os.path.join(DATA_DIR, "backups")
 KEEP_DAILY = 30
+FILES_DIR = os.path.join(DATA_DIR, "files")
+MAX_UPLOAD = int(os.environ.get("MAX_UPLOAD_MB", "50")) * 1024 * 1024
+# tipos que el navegador puede mostrar sin riesgo; el resto (html, svg, js...) se descarga
+INLINE_TYPES = {"application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp", "text/plain"}
 
 
 def load(col):
@@ -35,6 +43,16 @@ def save(col, items):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(items, f, ensure_ascii=False, indent=1)
     os.replace(tmp, path)
+
+
+def safe_name(name):
+    name = os.path.basename((name or "archivo").replace("\\", "/"))
+    name = re.sub(r"[^\w.\- ()\u00C0-\u017F]", "_", name).strip(" .") or "archivo"
+    return name[:120]
+
+
+def file_path(tid, fid, name):
+    return os.path.join(FILES_DIR, tid, fid + "_" + name)
 
 
 def snapshot(name=None):
@@ -69,6 +87,9 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             with LOCK:
                 return self._json(load(m.group(1)))
+        m = re.fullmatch(r"/api/files/([\w-]+)/([\w-]+)", self.path.split("?")[0])
+        if m:
+            return self._serve_file(m.group(1), m.group(2))
         if self.path == "/api/export":
             with LOCK:
                 data = {"exported": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -93,7 +114,59 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._json({"error": "no encontrado"}, 404)
 
+    def _serve_file(self, tid, fid):
+        with LOCK:
+            t = next((x for x in load("tickets") if x["id"] == tid), None)
+            meta = next((f for f in (t or {}).get("files", []) if f["id"] == fid), None)
+        path = file_path(tid, fid, meta["name"]) if meta else None
+        if not path or not os.path.isfile(path):
+            return self._json({"error": "archivo no encontrado"}, 404)
+        ctype = meta.get("type") or mimetypes.guess_type(meta["name"])[0] or "application/octet-stream"
+        if ctype == "text/plain":
+            ctype = "text/plain; charset=utf-8"
+        inline = ctype.split(";")[0] in INLINE_TYPES
+        with open(path, "rb") as f:
+            body = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype if inline else "application/octet-stream")
+        self.send_header("Content-Disposition", "%s; filename*=UTF-8''%s" % (
+            "inline" if inline else "attachment", quote(meta["name"])))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _upload(self, tid):
+        n = int(self.headers.get("Content-Length", 0))
+        if n <= 0:
+            return self._json({"error": "fichero vacio"}, 400)
+        if n > MAX_UPLOAD:
+            return self._json({"error": "supera el maximo de %d MB" % (MAX_UPLOAD // 1048576)}, 413)
+        name = safe_name(unquote(parse_qs(urlparse(self.path).query).get("name", ["archivo"])[0]))
+        data = self.rfile.read(n)
+        with LOCK:
+            tickets = load("tickets")
+            t = next((x for x in tickets if x["id"] == tid), None)
+            if not t:
+                return self._json({"error": "ticket no encontrado"}, 404)
+            snapshot()
+            fid = uuid.uuid4().hex[:12]
+            path = file_path(tid, fid, name)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as f:
+                f.write(data)
+            meta = {"id": fid, "name": name, "size": len(data),
+                    "type": self.headers.get("Content-Type", "") or mimetypes.guess_type(name)[0] or "",
+                    "added": time.strftime("%Y-%m-%dT%H:%M:%S")}
+            t.setdefault("files", []).append(meta)
+            t["updated"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            save("tickets", tickets)
+        self._json(meta)
+
     def do_POST(self):
+        m = re.fullmatch(r"/api/tickets/([\w-]+)/files", self.path.split("?")[0])
+        if m:
+            return self._upload(m.group(1))
         if self.path != "/api/import":
             return self._json({"error": "ruta invalida"}, 404)
         n = int(self.headers.get("Content-Length", 0))
@@ -125,6 +198,8 @@ class Handler(BaseHTTPRequestHandler):
             items = load(col)
             for i, t in enumerate(items):
                 if t["id"] == tid:
+                    if col == "tickets" and "files" in t:
+                        ticket["files"] = t["files"]
                     items[i] = ticket
                     break
             else:
@@ -133,12 +208,31 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"ok": True})
 
     def do_DELETE(self):
+        m = re.fullmatch(r"/api/tickets/([\w-]+)/files/([\w-]+)", self.path)
+        if m:
+            tid, fid = m.groups()
+            with LOCK:
+                tickets = load("tickets")
+                t = next((x for x in tickets if x["id"] == tid), None)
+                meta = next((f for f in (t or {}).get("files", []) if f["id"] == fid), None)
+                if not meta:
+                    return self._json({"error": "archivo no encontrado"}, 404)
+                snapshot()
+                t["files"] = [f for f in t["files"] if f["id"] != fid]
+                save("tickets", tickets)
+                try:
+                    os.remove(file_path(tid, fid, meta["name"]))
+                except OSError:
+                    pass
+            return self._json({"ok": True})
         col, tid = self._route()
         if not tid:
             return self._json({"error": "ruta invalida"}, 404)
         with LOCK:
             snapshot()
             save(col, [t for t in load(col) if t["id"] != tid])
+            if col == "tickets":
+                shutil.rmtree(os.path.join(FILES_DIR, tid), ignore_errors=True)
         self._json({"ok": True})
 
     def log_message(self, fmt, *args):
