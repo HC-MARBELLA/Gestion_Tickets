@@ -139,3 +139,16 @@ iniciar.bat        Arranque en Windows
 - Dockerfile / docker-compose.
 - Deshacer y más atajos de teclado.
 - Incluir los adjuntos en la exportación (ZIP).
+
+### Ideas con IA (pendientes, opcionales)
+
+Todas serían opcionales: se activarían con una variable de entorno (`ANTHROPIC_API_KEY`) y, sin ella, la app funciona como ahora. Bastaría un modelo pequeño (coste de céntimos al mes) y solo se enviaría el texto de la nota o del ticket consultado, nunca toda la base de datos. Como alternativa sin nube se podría usar un modelo local.
+
+1. **Captura inteligente de notas**: escribir texto libre ("hablé con Juan de Sage, me llama el jueves con el precio") y que la IA proponga el contacto (nombre, empresa, puesto, teléfono, correo), el estado del paso (A realizar / Pendiente) y la fecha de seguimiento. El usuario solo confirma. Sustituye a las reglas actuales de detección.
+2. **Pegar un correo y crear el ticket**: a partir de un correo o hilo, generar el ticket con los pasos resumidos, los contactos de la firma y el correo original como adjunto.
+3. **Borrador de correo para "Reclamar hoy"**: un botón que redacta el correo de seguimiento con el contexto del ticket, para revisarlo y enviarlo a mano (nunca se envía solo).
+4. **Preguntar a las notas**: consultas en lenguaje natural ("¿en qué quedamos con Fortinet?", "¿qué tengo abierto con Sage?").
+5. **Leer los adjuntos**: extraer importe, fecha y proveedor de PDFs de presupuestos y añadirlo como paso.
+6. **Resumen de la mañana**: un párrafo con lo prioritario del día.
+
+Orden recomendado: 1, 2 y 3 primero; la 4 cuando haya muchas notas.
