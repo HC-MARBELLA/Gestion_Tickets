@@ -176,8 +176,10 @@ mark{background:#f0c75e;color:#1c1a16;border-radius:3px;padding:0 1px}
 .wmenu button:hover{background:var(--hi)}
 .wmenu small{display:block;padding:8px 10px;font:italic 400 15px var(--serif);color:var(--mut)}
 .rnew{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px}
-.rnew input[type=text]{flex:1 1 100%;font:italic 400 16px var(--serif);border:0;border-bottom:1.5px dashed var(--line);background:none;outline:0;color:var(--ink);padding:4px 0}
-.rnew input[type=text]:focus{border-bottom-color:var(--ink)}
+.rnew input[type=text]{flex:1 1 100%;font:400 15px var(--sans);border:1.5px solid var(--line);border-radius:10px;background:var(--paper);outline:0;color:var(--ink);padding:7px 11px}
+.rnew input[type=text]:focus{border-color:var(--ink)}
+.rnew input[type=text].need{border-color:var(--ar);box-shadow:0 0 0 3px color-mix(in srgb,var(--ar) 22%,transparent)}
+.rnew input[type=text].need::placeholder{color:var(--ar)}
 .rnew input[type=text]::placeholder{color:var(--mut)}
 .rnew input[type=date]{flex:1}
 .rnew .b{padding:4px 14px}
@@ -261,7 +263,7 @@ dialog input{width:100%;padding:8px 10px;border:1.5px solid var(--ink);border-ra
       <div class="wadd"><button type="button" id="wadd" aria-expanded="false">+ A&ntilde;adir widget</button><div class="wmenu" id="wmenu" hidden></div></div>
       <div class="box" data-w="week"><button type="button" class="wx" data-hide="week" title="Ocultar este panel">ocultar</button><h3>Pr&oacute;ximos 7 d&iacute;as</h3><div class="week" id="week"></div></div>
       <div class="box" data-w="rec"><button type="button" class="wx" data-hide="rec" title="Ocultar este panel">ocultar</button><h3>Recordatorios</h3>
-        <form class="rnew" id="rnew"><input type="text" id="rt" placeholder="Algo que recordar&hellip;" autocomplete="off"><input type="date" id="rd" required><button class="b">A&ntilde;adir</button></form>
+        <form class="rnew" id="rnew"><input type="text" id="rt" placeholder="Escribe aqu&iacute; la nota&hellip;" autocomplete="off"><input type="date" id="rd" required><button class="b">A&ntilde;adir</button></form>
         <div id="recs"></div></div>
       <div class="box" data-w="fus"><button type="button" class="wx" data-hide="fus" title="Ocultar este panel">ocultar</button><h3>Seguimientos</h3><div id="fus"></div></div>
       <div class="box" data-w="cts"><button type="button" class="wx" data-hide="cts" title="Ocultar este panel">ocultar</button><h3>Contactos</h3><div id="cts"></div></div>
@@ -738,8 +740,14 @@ function remEl(r){
   mk('✕','Borrar',async()=>{if(await ask('Borrar el recordatorio "'+r.text+'"?',[['Cancelar',false],['Borrar',true,true]]))removeRem(r)});
   el.append(dt,x,a);return el;
 }
-$('#rnew').onsubmit=e=>{e.preventDefault();const v=$('#rt').value.trim(),d=$('#rd').value;if(!v||!d)return;
-  saveRem({id:uid(),text:v,date:d,created:now(),done:null});$('#rt').value='';$('#rd').value=today();$('#rt').focus()};
+const RT_PH='Escribe aquí la nota…';
+$('#rnew').onsubmit=e=>{e.preventDefault();const t=$('#rt'),v=t.value.trim(),d=$('#rd').value||today();
+  if(!v){
+    t.placeholder='Escribe la nota del '+new Date(d+'T00:00').toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short'});
+    t.classList.add('need');return t.focus();
+  }
+  saveRem({id:uid(),text:v,date:d,created:now(),done:null});t.value='';t.placeholder=RT_PH;t.classList.remove('need');$('#rd').value=today();t.focus()};
+$('#rt').oninput=e=>e.target.classList.remove('need');
 
 /* ---------- paneles laterales (widgets) ---------- */
 const WIDGETS=[['week','Próximos 7 días'],['rec','Recordatorios'],['fus','Seguimientos'],['cts','Contactos']];
